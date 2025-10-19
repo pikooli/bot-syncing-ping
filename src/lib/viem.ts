@@ -6,7 +6,7 @@ export const client = createPublicClient({
     multicall: true,
   },
   chain: sepolia,
-  transport: http(process.env['ALCHEMY_HTTP'] ?? ''),
+  transport: http(process.env['RCP_HTTP'] ?? ''),
 });
 
 export const getLatestBlockNumber = async () => {
@@ -17,7 +17,7 @@ export const getLatestBlockNumber = async () => {
     throw new Error('Latest block not found');
   }
   const latestBlockNumber = Number(latestBlock.number);
-  if (!latestBlockNumber) {
+  if (!Number.isFinite(latestBlockNumber)) {
     throw new Error('Latest block number not found');
   }
   return latestBlockNumber;

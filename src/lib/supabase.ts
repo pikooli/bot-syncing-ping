@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { BLOCK_NUMBER_USAGE } from '@/constant';
+import { BLOCK_NUMBER_USAGE } from '@/constants';
 import { logger } from './logger';
 
 interface DbStorage {
@@ -18,7 +18,7 @@ export const insertIntoDbStorage = async (hashs: string[]) => {
     },
   );
   if (error) {
-    logger.error('Error inserting into storage', error);
+    logger.error('[insertIntoDbStorage] Error inserting into storage', error);
     throw error;
   }
   return data;
@@ -27,7 +27,7 @@ export const insertIntoDbStorage = async (hashs: string[]) => {
 export const findInDbStorage = async () => {
   const { data, error } = await supabase.from('storage').select('*');
   if (error) {
-    logger.error('Error finding in storage', error);
+    logger.error('[findInDbStorage] Error finding in storage', error);
   }
   return data as DbStorage[];
 };
@@ -45,7 +45,7 @@ export const addBlockNumber = async (
     .from('blockNumber')
     .upsert({ block, usage }, { onConflict: 'usage' });
   if (error) {
-    logger.error('Error adding block number', error);
+    logger.error('[addBlockNumber] Error adding block number', error);
     throw error;
   }
   return data;
@@ -59,7 +59,7 @@ export const findBlockNumber = async (
     .select('*')
     .eq('usage', usage);
   if (error) {
-    logger.error('Error finding storage block', error);
+    logger.error('[findBlockNumber] Error finding storage block', error);
     throw error;
   }
   return data as DbBlockNumber[];

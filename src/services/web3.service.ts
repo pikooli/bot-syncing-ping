@@ -1,11 +1,12 @@
 import { EventLog, Log } from 'ethers';
-import { contractAbi } from '@/contract';
+import { contractAbi } from '@/constants/contract';
 import { client, getLatestBlockNumber } from '@/lib/viem';
 import { parseEventLogs } from 'viem';
 import { logger } from '@/lib/logger';
-import { contract } from '@/lib/ether';
+import { contract, provider } from '@/lib/ether';
 
 const HISTORY_STEP = 5;
+const TRANSACTION_TIMEOUT = 10_000;
 
 export const getTransactionDetails = async (txHash: `0x${string}`) => {
   try {
@@ -21,7 +22,7 @@ export const getTransactionDetails = async (txHash: `0x${string}`) => {
     return { event: eventLogs[0] as unknown as EventLog, tx };
   } catch (error) {
     logger.error(
-      `Error getting transaction details for txHash ${txHash}`,
+      `[getTransactionDetails] Error getting transaction details for txHash ${txHash}`,
       error,
     );
     throw error;
@@ -30,12 +31,16 @@ export const getTransactionDetails = async (txHash: `0x${string}`) => {
 
 export const sendPong = async (txHash: string) => {
   try {
-    logger.info('Sending pong', txHash);
+    logger.info('[sendPong] Sending pong', txHash);
     const tx = await contract['pong']?.(txHash);
-    const receipt = await tx.wait();
+    const receipt = await provider.waitForTransaction(
+      tx.hash,
+      1,
+      TRANSACTION_TIMEOUT,
+    );
     return receipt;
   } catch (error) {
-    logger.error(`Error sending pong for txHash ${txHash}`, error);
+    logger.error(`[sendPong] Error sending pong for txHash ${txHash}`, error);
     throw error;
   }
 };
@@ -44,28 +49,29 @@ export const sendPing = async () => {
   try {
     const tx = await contract['ping']?.();
     const receipt = await tx.wait();
-    logger.info('Ping sent', receipt);
+    logger.info('[sendPing] Ping sent', receipt);
     return receipt;
   } catch (error) {
-    logger.error('Error sending ping', error);
+    logger.error('[sendPing] Error sending ping', error);
     throw error;
   }
 };
 
-export const listenToPing = async (cb: (...args: Array<any>) => void) => {
-  await contract['on']?.('Ping', cb);
+export const listenToPing = (cb: (...args: Array<any>) => void) => {
+  console.log('[listenToPing] starting to listen to ping');
+  return contract['on']?.('Ping', cb);
 };
 
 export const intervalPing = async (
   cb: () => Promise<void>,
   interval: number = 1000,
 ) => {
-  logger.info('Starting intervalPing', interval);
+  logger.info('[intervalPing] Starting intervalPing', interval);
   while (true) {
     try {
       await cb();
     } catch (error) {
-      logger.error('Error in intervalPing', error);
+      logger.error('[intervalPing] Error in intervalPing', error);
       throw error;
     }
     await new Promise((resolve) => setTimeout(resolve, interval));
@@ -78,10 +84,12 @@ export const parseHistory = async (
   endBlock?: number,
 ) => {
   logger.info(
-    'Parsing history for event',
+    '[parseHistory] Parsing history for event',
     event,
     'starting from block',
     startBlock,
+    'to block',
+    endBlock,
   );
   const history: (Log | EventLog)[] = [];
   try {
@@ -95,7 +103,7 @@ export const parseHistory = async (
     while (true) {
       const blockevents = await contract['queryFilter']?.(event, idx, endLoop);
       logger.info(
-        `found ${blockevents.length} events for block ${idx} to ${endLoop}`,
+        `[parseHistory] found ${blockevents.length} events for block ${idx} to ${endLoop}`,
       );
       history.push(...blockevents);
       if (
@@ -116,12 +124,12 @@ export const parseHistory = async (
     }
 
     logger.info(
-      `found ${history.length} events, startBlock: ${startBlock}, endLoop: ${endLoop}`,
+      `[parseHistory] found ${history.length} events, startBlock: ${startBlock}, endLoop: ${endLoop}`,
     );
     return { history };
   } catch (error) {
     logger.error(
-      `Error parsing history for event ${event} starting from block ${startBlock}`,
+      `[parseHistory] Error parsing history for event ${event} starting from block ${startBlock}`,
       error,
     );
     throw error;

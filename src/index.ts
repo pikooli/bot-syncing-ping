@@ -1,10 +1,11 @@
 import 'dotenv/config';
-import { EventLog } from 'ethers';
+import { EventLog, ContractEventPayload } from 'ethers';
 import { TransactionReceipt } from 'viem';
 import {
   parsePongHistory,
   getTransactionDetails,
   intervalPing,
+  listenToPing,
 } from '@/services/web3.service';
 import { sendAlert } from '@/services/sendAlert.service';
 import { addToStorage, storage, findInStorage } from '@/lib/storage';
@@ -15,13 +16,14 @@ import {
   findBlockNumber,
 } from '@/lib/supabase';
 import { wallet } from '@/lib/ether';
-import { BLOCK_NUMBER_USAGE } from '@/constant';
+import { BLOCK_NUMBER_USAGE } from '@/constants';
 import { logger } from '@/lib/logger';
 import { getLatestBlockNumber } from '@/lib/viem';
 import { iterateOverPing } from '@/services/server.service';
 
 const MAX_RETRIES = 10;
 const INTERVAL_POOL = 15000;
+const RETRY_INTERVAL = 5000;
 const BLOCK_STEP = 50;
 const INITIAL_BLOCK = Number(process.env['START_BLOCK']!);
 if (!Number.isFinite(INITIAL_BLOCK)) throw new Error('Invalid START_BLOCK');
@@ -30,12 +32,26 @@ let storageBlock = INITIAL_BLOCK;
 let currentBlock = INITIAL_BLOCK;
 let retryCount = 0;
 
+const handleListenToPing = async (event: ContractEventPayload) => {
+  logger.info(
+    '[handleListenToPing] Ping received hash: ',
+    event.log.transactionHash,
+    'blockNumber: ',
+    event.log.blockNumber,
+  );
+  await iterateOverPing(currentBlock, event.log.blockNumber);
+  await addBlockNumber(event.log.blockNumber, BLOCK_NUMBER_USAGE.PING);
+  currentBlock = event.log.blockNumber;
+  logger.info('[main] storage', storage);
+};
+
 export const initializeStorage = async () => {
+  logger.info('[initializeStorage] starting initializeStorage');
   const dbStorage = await findInDbStorage();
   dbStorage.forEach((item) => {
     addToStorage(item.hash);
   });
-  logger.info('storage', storage);
+  logger.info('[initializeStorage] storage', storage);
 
   const latestBlockNumber = await getLatestBlockNumber();
   if (storageBlock >= latestBlockNumber) {
@@ -89,23 +105,18 @@ export const initializeStorage = async () => {
     }
   } catch (error) {
     storageBlock = idx;
-    logger.error('Error initializing storage', error);
+    logger.error('[initializeStorage] Error initializing storage', error);
     throw error;
   }
 };
 
 const main = async () => {
-  logger.info(
-    '================================ starting server ================================',
-  );
-
+  logger.info('[main] starting main ');
   await initializeStorage();
 
-  logger.info('storage', storage);
+  logger.info('[main] storage', storage);
 
-  logger.info(
-    '================================ starting iterateOverPing ================================',
-  );
+  logger.info('[main] starting iterateOverPing');
 
   const latestBlockNumber = await getLatestBlockNumber();
   if (currentBlock < latestBlockNumber) {
@@ -126,24 +137,35 @@ const main = async () => {
     }
   }
 
-  logger.info('storage', storage);
-  logger.info(
-    '================================ starting intervalPing ================================',
-  );
+  logger.info('[main] storage', storage);
+
+  await listenToPing(handleListenToPing);
+
+  logger.info('[main] starting intervalPing');
+
   await intervalPing(async () => {
     const latestBlockNumber = await getLatestBlockNumber();
+    logger.info(
+      '[main] intervalPing currentBlock: ',
+      currentBlock,
+      '=> latestBlockNumber: ',
+      latestBlockNumber,
+    );
     if (currentBlock >= latestBlockNumber) {
       return;
     }
     await iterateOverPing(currentBlock, latestBlockNumber);
     await addBlockNumber(latestBlockNumber, BLOCK_NUMBER_USAGE.PING);
     currentBlock = latestBlockNumber;
-    logger.info('storage', storage);
+    logger.info('[main] storage', storage);
     retryCount = 0;
   }, INTERVAL_POOL);
 };
 
 const startServer = async () => {
+  logger.info(
+    '================================ starting server ================================',
+  );
   const pongBlockNumber = await findBlockNumber(BLOCK_NUMBER_USAGE.PONG);
   if (pongBlockNumber.length > 0) {
     storageBlock = Number(pongBlockNumber[0]?.block ?? INITIAL_BLOCK);
@@ -157,15 +179,18 @@ const startServer = async () => {
     try {
       await main();
     } catch (error) {
-      logger.error('Error in main, restarting in 5 seconds...', error);
+      logger.error(
+        '[startServer] Error in main, restarting in 5 seconds...',
+        error,
+      );
       await addBlockNumber(storageBlock, BLOCK_NUMBER_USAGE.PONG);
       await addBlockNumber(currentBlock, BLOCK_NUMBER_USAGE.PING);
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      await new Promise((resolve) => setTimeout(resolve, RETRY_INTERVAL));
       retryCount++;
-      logger.error('retryCount: ', retryCount);
+      logger.error('[startServer] retryCount: ', retryCount);
       if (retryCount > MAX_RETRIES) {
         await sendAlert();
-        throw new Error('Max retries reached, exiting...');
+        throw new Error('[startServer] Max retries reached, exiting...');
       }
     }
   }

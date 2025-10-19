@@ -29,7 +29,7 @@ export const iterateOverPing = async (
       await insertIntoDbStorage(Array.from(storage));
     } catch (error) {
       temporaryStorage.delete(item.transactionHash as `0x${string}`);
-      logger.error('Error sending pong', error);
+      logger.error('[iterateOverPing] Error sending pong', error);
       throw error;
     }
   }
