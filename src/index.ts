@@ -2,19 +2,12 @@ import 'dotenv/config';
 import { EventLog } from 'ethers';
 import { TransactionReceipt } from 'viem';
 import {
-  parsePingHistory,
-  sendPong,
   parsePongHistory,
   getTransactionDetails,
   intervalPing,
 } from '@/services/web3.service';
 import { sendAlert } from '@/services/sendAlert.service';
-import {
-  addToStorage,
-  storage,
-  findInStorage,
-  temporaryStorage,
-} from '@/lib/storage';
+import { addToStorage, storage, findInStorage } from '@/lib/storage';
 import {
   findInDbStorage,
   insertIntoDbStorage,
@@ -24,7 +17,8 @@ import {
 import { wallet } from '@/lib/ether';
 import { BLOCK_NUMBER_USAGE } from '@/constant';
 import { logger } from '@/lib/logger';
-import { getLatestBlockNumber } from './lib/viem';
+import { getLatestBlockNumber } from '@/lib/viem';
+import { iterateOverPing } from '@/services/server.service';
 
 const MAX_RETRIES = 10;
 const INTERVAL_POOL = 15000;
@@ -35,33 +29,6 @@ if (!Number.isFinite(INITIAL_BLOCK)) throw new Error('Invalid START_BLOCK');
 let storageBlock = INITIAL_BLOCK;
 let currentBlock = INITIAL_BLOCK;
 let retryCount = 0;
-
-export const iterateOverPing = async (
-  initialBlock: number,
-  endBlock?: number,
-) => {
-  const { history } = await parsePingHistory(initialBlock, endBlock);
-  for (const item of history) {
-    if (
-      findInStorage(item.transactionHash) ||
-      temporaryStorage.has(item.transactionHash as `0x${string}`)
-    ) {
-      continue;
-    }
-    try {
-      temporaryStorage.add(item.transactionHash as `0x${string}`);
-      await sendPong(item.transactionHash);
-
-      temporaryStorage.delete(item.transactionHash as `0x${string}`);
-      addToStorage(item.transactionHash);
-      await insertIntoDbStorage(Array.from(storage));
-    } catch (error) {
-      temporaryStorage.delete(item.transactionHash as `0x${string}`);
-      logger.error('Error sending pong', error);
-      throw error;
-    }
-  }
-};
 
 export const initializeStorage = async () => {
   const dbStorage = await findInDbStorage();
@@ -106,12 +73,13 @@ export const initializeStorage = async () => {
         ) {
           continue;
         }
-        if (!findInStorage(event.args['txHash'] as `0x${string}`)) {
-          addToStorage(event.args['txHash'] as `0x${string}`);
+        const txHash = event.args['txHash'] as `0x${string}`;
+        if (!findInStorage(txHash)) {
+          addToStorage(txHash);
+          await insertIntoDbStorage([txHash]);
         }
       }
-
-      await insertIntoDbStorage(Array.from(storage));
+      await addBlockNumber(endLoop, BLOCK_NUMBER_USAGE.PONG);
       idx = endLoop + 1;
       endLoop = idx + BLOCK_STEP;
       storageBlock = idx;
@@ -148,6 +116,7 @@ const main = async () => {
         endLoop = latestBlockNumber;
       }
       await iterateOverPing(idx, endLoop);
+      await addBlockNumber(endLoop, BLOCK_NUMBER_USAGE.PING);
       idx = endLoop + 1;
       endLoop = idx + BLOCK_STEP;
       currentBlock = idx;
@@ -161,14 +130,13 @@ const main = async () => {
   logger.info(
     '================================ starting intervalPing ================================',
   );
-
   await intervalPing(async () => {
     const latestBlockNumber = await getLatestBlockNumber();
     if (currentBlock >= latestBlockNumber) {
       return;
     }
     await iterateOverPing(currentBlock, latestBlockNumber);
-
+    await addBlockNumber(latestBlockNumber, BLOCK_NUMBER_USAGE.PING);
     currentBlock = latestBlockNumber;
     logger.info('storage', storage);
     retryCount = 0;
