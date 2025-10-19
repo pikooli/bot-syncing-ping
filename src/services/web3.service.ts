@@ -1,12 +1,14 @@
-import { EventLog, Log } from 'ethers';
+import { EventLog, Log, ethers } from 'ethers';
 import { contractAbi } from '@/constants/contract';
 import { client, getLatestBlockNumber } from '@/lib/viem';
 import { parseEventLogs } from 'viem';
 import { logger } from '@/lib/logger';
-import { contract, provider } from '@/lib/ether';
+import { contract, provider, wallet } from '@/lib/ether';
+import { bumpFees, sleep } from '@/utils';
 
 const HISTORY_STEP = 5;
-const TRANSACTION_TIMEOUT = 10_000;
+const TRANSACTION_TIMEOUT = 15_000;
+const MAX_ATTEMPTS = 3;
 
 export const getTransactionDetails = async (txHash: `0x${string}`) => {
   try {
@@ -29,20 +31,44 @@ export const getTransactionDetails = async (txHash: `0x${string}`) => {
   }
 };
 
+// TODO improve in case a tx is ongoing and timeout, we should wait for the tx to be mined
+// and if it is mined, we should return the receipt
+// and if it is not mined, we should try again with a bumped fees
 export const sendPong = async (txHash: string) => {
-  try {
-    logger.info('[sendPong] Sending pong', txHash);
-    const tx = await contract['pong']?.(txHash);
-    const receipt = await provider.waitForTransaction(
-      tx.hash,
-      1,
-      TRANSACTION_TIMEOUT,
-    );
-    return receipt;
-  } catch (error) {
-    logger.error(`[sendPong] Error sending pong for txHash ${txHash}`, error);
-    throw error;
+  logger.info('[sendPong] Sending pong', txHash);
+  let fees = await currentFees();
+  const data = contract.interface.encodeFunctionData('pong', [txHash]);
+  const contractAddress = await contract.getAddress();
+  let nonce = await wallet.getNonce('pending');
+  let lastTx: ethers.TransactionResponse | null = null;
+  let receipt: ethers.TransactionReceipt | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      logger.info(`[sendPong] attempt ${attempt} sending pong`, txHash);
+      const request = {
+        to: contractAddress,
+        data,
+        nonce,
+        ...fees,
+      };
+      console.log('request ==========', request);
+      lastTx = await wallet.sendTransaction(request);
+      receipt = await provider.waitForTransaction(
+        lastTx.hash,
+        1,
+        TRANSACTION_TIMEOUT,
+      );
+      if (!receipt || receipt.status === 0) {
+        throw new Error('Transaction failed');
+      }
+      logger.info('[sendPong] pong sent', receipt);
+      return receipt;
+    } catch (error) {
+      logger.error(`[sendPong] Error sending pong for txHash ${txHash}`, error);
+      fees = bumpFees(fees);
+    }
   }
+  return receipt;
 };
 
 export const sendPing = async () => {
@@ -64,7 +90,7 @@ export const listenToPing = (cb: (...args: Array<any>) => void) => {
 
 export const intervalPing = async (
   cb: () => Promise<void>,
-  interval: number = 1000,
+  interval: number = 10_000,
 ) => {
   logger.info('[intervalPing] Starting intervalPing', interval);
   while (true) {
@@ -74,7 +100,7 @@ export const intervalPing = async (
       logger.error('[intervalPing] Error in intervalPing', error);
       throw error;
     }
-    await new Promise((resolve) => setTimeout(resolve, interval));
+    await sleep(interval);
   }
 };
 
@@ -148,4 +174,11 @@ export const parsePingHistory = async (
   endBlock?: number,
 ) => {
   return await parseHistory('Ping', startBlock, endBlock);
+};
+
+export const currentFees = async () => {
+  const fd = await provider.getFeeData();
+  const tip = fd.maxPriorityFeePerGas ?? ethers.parseUnits('2', 'gwei');
+  const max = fd.maxFeePerGas ?? tip * 2n;
+  return { maxFeePerGas: max, maxPriorityFeePerGas: tip };
 };

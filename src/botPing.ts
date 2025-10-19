@@ -9,21 +9,17 @@ import {
 } from '@/services/web3.service';
 import { sendAlert } from '@/services/sendAlert.service';
 import { addToStorage, storage, findInStorage } from '@/lib/storage';
-import {
-  findInDbStorage,
-  insertIntoDbStorage,
-  addBlockNumber,
-  findBlockNumber,
-} from '@/lib/supabase';
+import { supabaseDb } from '@/lib/supabase';
 import { wallet } from '@/lib/ether';
 import { BLOCK_NUMBER_USAGE } from '@/constants';
 import { logger } from '@/lib/logger';
 import { getLatestBlockNumber } from '@/lib/viem';
 import { iterateOverPing } from '@/services/server.service';
+import { sleep } from '@/utils';
 
 const MAX_RETRIES = 10;
-const INTERVAL_POOL = 15000;
-const RETRY_INTERVAL = 5000;
+const INTERVAL_POOL = 15_000;
+const RETRY_INTERVAL = 5_000;
 const BLOCK_STEP = 50;
 const INITIAL_BLOCK = Number(process.env['START_BLOCK']!);
 if (!Number.isFinite(INITIAL_BLOCK)) throw new Error('Invalid START_BLOCK');
@@ -40,14 +36,17 @@ const handleListenToPing = async (event: ContractEventPayload) => {
     event.log.blockNumber,
   );
   await iterateOverPing(currentBlock, event.log.blockNumber);
-  await addBlockNumber(event.log.blockNumber, BLOCK_NUMBER_USAGE.PING);
+  await supabaseDb.blockNumber.addBlockNumber(
+    event.log.blockNumber,
+    BLOCK_NUMBER_USAGE.PING,
+  );
   currentBlock = event.log.blockNumber;
   logger.info('[main] storage', storage);
 };
 
 export const initializeStorage = async () => {
   logger.info('[initializeStorage] starting initializeStorage');
-  const dbStorage = await findInDbStorage();
+  const dbStorage = await supabaseDb.storage.findInDbStorage();
   dbStorage.forEach((item) => {
     addToStorage(item.hash);
   });
@@ -90,12 +89,18 @@ export const initializeStorage = async () => {
           continue;
         }
         const txHash = event.args['txHash'] as `0x${string}`;
+
         if (!findInStorage(txHash)) {
           addToStorage(txHash);
-          await insertIntoDbStorage([txHash]);
+          await supabaseDb.storage.insertIntoDbStorageModeDone([
+            { hash: txHash, block: event.blockNumber },
+          ]);
         }
       }
-      await addBlockNumber(endLoop, BLOCK_NUMBER_USAGE.PONG);
+      await supabaseDb.blockNumber.addBlockNumber(
+        endLoop,
+        BLOCK_NUMBER_USAGE.PONG,
+      );
       idx = endLoop + 1;
       endLoop = idx + BLOCK_STEP;
       storageBlock = idx;
@@ -127,7 +132,10 @@ const main = async () => {
         endLoop = latestBlockNumber;
       }
       await iterateOverPing(idx, endLoop);
-      await addBlockNumber(endLoop, BLOCK_NUMBER_USAGE.PING);
+      await supabaseDb.blockNumber.addBlockNumber(
+        endLoop,
+        BLOCK_NUMBER_USAGE.PING,
+      );
       idx = endLoop + 1;
       endLoop = idx + BLOCK_STEP;
       currentBlock = idx;
@@ -146,7 +154,7 @@ const main = async () => {
   await intervalPing(async () => {
     const latestBlockNumber = await getLatestBlockNumber();
     logger.info(
-      '[main] intervalPing currentBlock: ',
+      '[intervalPing] intervalPing currentBlock: ',
       currentBlock,
       '=> latestBlockNumber: ',
       latestBlockNumber,
@@ -155,22 +163,29 @@ const main = async () => {
       return;
     }
     await iterateOverPing(currentBlock, latestBlockNumber);
-    await addBlockNumber(latestBlockNumber, BLOCK_NUMBER_USAGE.PING);
+    await supabaseDb.blockNumber.addBlockNumber(
+      latestBlockNumber,
+      BLOCK_NUMBER_USAGE.PING,
+    );
     currentBlock = latestBlockNumber;
-    logger.info('[main] storage', storage);
+    logger.info('[intervalPing] storage', storage);
     retryCount = 0;
   }, INTERVAL_POOL);
 };
 
-const startServer = async () => {
+const botPing = async () => {
   logger.info(
-    '================================ starting server ================================',
+    '================================ starting botPing ================================',
   );
-  const pongBlockNumber = await findBlockNumber(BLOCK_NUMBER_USAGE.PONG);
+  const pongBlockNumber = await supabaseDb.blockNumber.findBlockNumber(
+    BLOCK_NUMBER_USAGE.PONG,
+  );
   if (pongBlockNumber.length > 0) {
     storageBlock = Number(pongBlockNumber[0]?.block ?? INITIAL_BLOCK);
   }
-  const pingBlockNumber = await findBlockNumber(BLOCK_NUMBER_USAGE.PING);
+  const pingBlockNumber = await supabaseDb.blockNumber.findBlockNumber(
+    BLOCK_NUMBER_USAGE.PING,
+  );
   if (pingBlockNumber.length > 0) {
     currentBlock = Number(pingBlockNumber[0]?.block ?? INITIAL_BLOCK);
   }
@@ -180,20 +195,26 @@ const startServer = async () => {
       await main();
     } catch (error) {
       logger.error(
-        '[startServer] Error in main, restarting in 5 seconds...',
+        '[botPing] Error in main, restarting in 5 seconds...',
         error,
       );
-      await addBlockNumber(storageBlock, BLOCK_NUMBER_USAGE.PONG);
-      await addBlockNumber(currentBlock, BLOCK_NUMBER_USAGE.PING);
-      await new Promise((resolve) => setTimeout(resolve, RETRY_INTERVAL));
+      await supabaseDb.blockNumber.addBlockNumber(
+        storageBlock,
+        BLOCK_NUMBER_USAGE.PONG,
+      );
+      await supabaseDb.blockNumber.addBlockNumber(
+        currentBlock,
+        BLOCK_NUMBER_USAGE.PING,
+      );
+      await sleep(RETRY_INTERVAL);
       retryCount++;
-      logger.error('[startServer] retryCount: ', retryCount);
+      logger.error('[botPing] retryCount: ', retryCount);
       if (retryCount > MAX_RETRIES) {
         await sendAlert();
-        throw new Error('[startServer] Max retries reached, exiting...');
+        throw new Error('[botPing] Max retries reached, exiting...');
       }
     }
   }
 };
 
-startServer();
+botPing();

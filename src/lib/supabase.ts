@@ -1,20 +1,31 @@
 import { createClient } from '@supabase/supabase-js';
-import { BLOCK_NUMBER_USAGE } from '@/constants';
+import { BLOCK_NUMBER_USAGE, QUEUE_STATE } from '@/constants';
 import { logger } from './logger';
 
 interface DbStorage {
   hash: `0x${string}`;
+  state: (typeof QUEUE_STATE)[keyof typeof QUEUE_STATE];
+  block: number;
 }
-export const supabase = createClient(
+
+const supabase = createClient(
   process.env['SUPABASE_URL'] ?? '',
   process.env['SUPABASE_SECRET_KEY'] ?? '',
 );
 
-export const insertIntoDbStorage = async (hashs: string[]) => {
+const insertIntoDbStorageModeQueue = async (
+  items: { hash: `0x${string}`; block: number }[],
+) => {
   const { data, error } = await supabase.from('storage').upsert(
-    hashs.map((hash) => ({ hash })),
+    items.map((item) => ({
+      hash: item.hash,
+      state: QUEUE_STATE.PENDING,
+      block: item.block,
+      done: false,
+    })),
     {
       onConflict: 'hash',
+      ignoreDuplicates: true,
     },
   );
   if (error) {
@@ -24,10 +35,65 @@ export const insertIntoDbStorage = async (hashs: string[]) => {
   return data;
 };
 
-export const findInDbStorage = async () => {
+const insertIntoDbStorageModeDone = async (
+  items: { hash: `0x${string}`; block: number }[],
+) => {
+  const { data, error } = await supabase.from('storage').upsert(
+    items.map((item) => ({
+      hash: item.hash,
+      state: QUEUE_STATE.COMPLETED,
+      done: true,
+      block: item.block,
+    })),
+    {
+      onConflict: 'hash',
+      ignoreDuplicates: true,
+    },
+  );
+  if (error) {
+    logger.error(
+      '[insertIntoDbStorageModeDone] Error inserting into storage',
+      error,
+    );
+    throw error;
+  }
+  return data;
+};
+
+const updateDbStorageModeCompleted = async (hash: string) => {
+  const { data, error } = await supabase
+    .from('storage')
+    .update({ state: QUEUE_STATE.COMPLETED, done: true })
+    .eq('hash', hash);
+  console.log('data ==========', data);
+  if (error) {
+    logger.error(
+      '[updateDbStorageModeCompleted] Error updating storage',
+      error,
+    );
+    throw error;
+  }
+  return data;
+};
+
+const findInDbStorage = async () => {
   const { data, error } = await supabase.from('storage').select('*');
   if (error) {
     logger.error('[findInDbStorage] Error finding in storage', error);
+  }
+  return data as DbStorage[];
+};
+
+const findInDbStorageFirstQueue = async () => {
+  const { data, error } = await supabase
+    .from('storage')
+    .select('*')
+    .eq('state', QUEUE_STATE.PENDING)
+    .eq('done', false)
+    .order('block', { ascending: true })
+    .limit(1);
+  if (error) {
+    logger.error('[findInDbStorageModeQueue] Error finding in storage', error);
   }
   return data as DbStorage[];
 };
@@ -37,7 +103,7 @@ interface DbBlockNumber {
   usage: (typeof BLOCK_NUMBER_USAGE)[keyof typeof BLOCK_NUMBER_USAGE];
 }
 
-export const addBlockNumber = async (
+const addBlockNumber = async (
   block: number,
   usage: (typeof BLOCK_NUMBER_USAGE)[keyof typeof BLOCK_NUMBER_USAGE],
 ) => {
@@ -51,7 +117,7 @@ export const addBlockNumber = async (
   return data;
 };
 
-export const findBlockNumber = async (
+const findBlockNumber = async (
   usage: (typeof BLOCK_NUMBER_USAGE)[keyof typeof BLOCK_NUMBER_USAGE],
 ) => {
   const { data, error } = await supabase
@@ -63,4 +129,18 @@ export const findBlockNumber = async (
     throw error;
   }
   return data as DbBlockNumber[];
+};
+
+export const supabaseDb = {
+  storage: {
+    insertIntoDbStorageModeQueue: insertIntoDbStorageModeQueue,
+    insertIntoDbStorageModeDone: insertIntoDbStorageModeDone,
+    updateDbStorageModeCompleted: updateDbStorageModeCompleted,
+    findInDbStorage: findInDbStorage,
+    findInDbStorageFirstQueue: findInDbStorageFirstQueue,
+  },
+  blockNumber: {
+    addBlockNumber: addBlockNumber,
+    findBlockNumber: findBlockNumber,
+  },
 };

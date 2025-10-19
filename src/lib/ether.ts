@@ -16,7 +16,7 @@ export const nonceManager = new NonceManager(wallet);
 export const contract = new ethers.Contract(
   process.env['CONTRACT_ADDRESS'] ?? '',
   contractAbi,
-  wallet,
+  nonceManager,
 );
 
 export const deployContract = async () => {
@@ -24,12 +24,13 @@ export const deployContract = async () => {
     const contractFactory = new ethers.ContractFactory(
       contractAbi,
       contractBytecode,
-      wallet,
+      nonceManager,
     );
     const tx = await contractFactory.deploy();
     const result = await tx.waitForDeployment();
+    console.log('result', result);
     const address = await result.getAddress();
-    const contract = await new ethers.Contract(address, contractAbi, wallet);
+    const contract = new ethers.Contract(address, contractAbi, nonceManager);
     logger.info(
       `[deployContract] Contract deployed at address ${address}`,
       contract,

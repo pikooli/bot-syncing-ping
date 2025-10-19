@@ -2,12 +2,14 @@
   "name": "bot-syncing",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/index.js",
+  "main": "dist/botPing.js",
   "type": "nodenext",
   "scripts": {
     "build": "tsc && tsc-alias",
-    "start": "node dist/index.js",
-    "dev": "npm run build && npm run start"
+    "start": "node dist/botPing.js",
+    "botPong": "node dist/botPong.js",
+    "dev": "npm run build && npm run start",
+    "test": "npm run build && node dist/script/test.js"
   },
   "repository": {
     "type": "git",
