@@ -4,7 +4,6 @@ import { supabaseDb } from '@/lib/supabase';
 import { sendAlert } from '@/services/sendAlert.service';
 import { logger } from '@/lib/logger';
 import { sleep } from '@/utils';
-import { QUEUE_STATE } from '@/constants';
 
 const INTERVAL_BOT_PONG = 15_000;
 const MAX_ATTEMPTS = 3;
@@ -29,7 +28,7 @@ const botPong = async () => {
         }
 
         logger.info(
-          `[botPong] Sending pong for hash: ${item.hash} block: ${item.block} attempt: ${item.attempt}`,
+          `[botPong] found item in queue for hash: ${item.hash} block: ${item.block} attempt: ${item.attempt}`,
         );
         let result = null;
         if (item.last_tx_hash && !item.done) {

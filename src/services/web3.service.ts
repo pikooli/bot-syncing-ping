@@ -71,6 +71,14 @@ export const sendPong = async (
         nonce,
         ...fees,
       };
+      if (
+        !(await haveEnoughtBalance({
+          gasLimit: GAS_LIMIT,
+          maxFeePerGas: fees.maxFeePerGas,
+        }))
+      ) {
+        throw new Error('Not enough balance');
+      }
       if (oldTx || attempt > 1) {
         request.gasLimit = GAS_LIMIT;
       }
@@ -293,4 +301,22 @@ export const verifyTransaction = async (txHash: `0x${string}`) => {
     throw new Error('[verifyTransaction] Transaction not found');
   }
   return { tx };
+};
+
+export const haveEnoughtBalance = async ({
+  value = ethers.parseUnits('0', 'ether'),
+  gasLimit,
+  maxFeePerGas,
+}: {
+  value?: bigint;
+  gasLimit: bigint;
+  maxFeePerGas: bigint;
+}) => {
+  const balance = await client.getBalance({
+    address: (await wallet.getAddress()) as `0x${string}`,
+  });
+  if (balance < value + gasLimit * maxFeePerGas) {
+    return false;
+  }
+  return true;
 };
