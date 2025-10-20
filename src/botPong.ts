@@ -1,9 +1,10 @@
 import 'dotenv/config';
-import { sendPong } from '@/services/web3.service';
+import { sendPong, resumePong } from '@/services/web3.service';
 import { supabaseDb } from '@/lib/supabase';
 import { sendAlert } from '@/services/sendAlert.service';
 import { logger } from '@/lib/logger';
 import { sleep } from '@/utils';
+import { QUEUE_STATE } from '@/constants';
 
 const INTERVAL_BOT_PONG = 15_000;
 const MAX_ATTEMPTS = 3;
@@ -28,10 +29,42 @@ const botPong = async () => {
         }
 
         logger.info(
-          `[botPong] Sending pong for hash: ${item.hash} block: ${item.block}`,
+          `[botPong] Sending pong for hash: ${item.hash} block: ${item.block} attempt: ${item.attempt}`,
         );
-        await sendPong(item.hash);
-        await supabaseDb.storage.updateDbStorageModeCompleted(item.hash);
+        let result = null;
+        if (item.last_tx_hash && !item.done) {
+          result = await resumePong({
+            txHash: item.hash,
+            last_tx_hash: item.last_tx_hash,
+            attempt: item.attempt!,
+          });
+        } else {
+          result = await sendPong(item.hash);
+        }
+        if (!result) {
+          throw new Error('Transaction failed');
+        }
+        const { nonce, lastTx, attempt, done } = result;
+        if (!done) {
+          logger.info(
+            '[botPong] Transaction not completed for hash',
+            item.hash,
+          );
+          await supabaseDb.storage.updateDbStorage({
+            hash: item.hash,
+            attempt: attempt,
+            nonce: nonce,
+            last_tx_hash: lastTx?.hash as `0x${string}`,
+          });
+          throw new Error('Transaction failed');
+        }
+        logger.info('[botPong] Transaction completed for hash', item.hash);
+        await supabaseDb.storage.updateDbStorageModeCompleted({
+          hash: item.hash,
+          nonce: nonce,
+          attempt: attempt,
+          last_tx_hash: lastTx?.hash ?? '',
+        });
         idx++;
         retryCount = 0;
       }

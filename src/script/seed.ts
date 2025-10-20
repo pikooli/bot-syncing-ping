@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import { deployContract, nonceManager } from '@/lib/ether';
+import { nonceManager } from '@/lib/ether';
+import { deployContract } from '@/services/web3.service';
 
 const seed = async () => {
   console.log('going to deploy contract please mine the block');

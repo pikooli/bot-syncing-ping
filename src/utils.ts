@@ -1,6 +1,6 @@
 import { logger } from '@/lib/logger';
 
-const BUMP_FACTOR = 1.1;
+const BUMP_FACTOR = 1.2;
 
 export function toJsonSafe<T>(obj: T): string {
   return JSON.stringify(

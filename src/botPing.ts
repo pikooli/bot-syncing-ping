@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { EventLog, ContractEventPayload } from 'ethers';
-import { TransactionReceipt } from 'viem';
+import { TransactionReceipt, Transaction } from 'viem';
 import {
   parsePongHistory,
   getTransactionDetails,
@@ -67,7 +67,8 @@ export const initializeStorage = async () => {
 
       const results: {
         event: EventLog;
-        tx: TransactionReceipt;
+        tx: Transaction;
+        receipt: TransactionReceipt;
       }[] = [];
       for (const item of history) {
         const details = await getTransactionDetails(
@@ -79,12 +80,11 @@ export const initializeStorage = async () => {
         results.push(details);
       }
 
-      const validDetails = results.filter((result) => result !== undefined);
-      for (const details of validDetails) {
-        const { tx, event } = details;
+      for (const details of results) {
+        const { tx, event, receipt } = details;
         if (
           event.eventName !== 'Pong' ||
-          tx.from.toLowerCase() !== wallet.address.toLowerCase()
+          receipt.from.toLowerCase() !== wallet.address.toLowerCase()
         ) {
           continue;
         }
@@ -93,7 +93,13 @@ export const initializeStorage = async () => {
         if (!findInStorage(txHash)) {
           addToStorage(txHash);
           await supabaseDb.storage.insertIntoDbStorageModeDone([
-            { hash: txHash, block: event.blockNumber },
+            {
+              hash: txHash,
+              block: Number(event.blockNumber),
+              nonce: tx.nonce,
+              attempt: 0,
+              last_tx_hash: event.transactionHash,
+            },
           ]);
         }
       }
