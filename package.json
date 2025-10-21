@@ -8,8 +8,9 @@
     "node": "20.x"
   },
   "scripts": {
+    "start": "concurrently \"npm run botPing\" \"npm run botPong\" --names botPing,botPong --prefix-colors blue,green --kill-others",
     "build": "tsc && tsc-alias",
-    "start": "node dist/botPing.js",
+    "botPing": "node dist/botPing.js",
     "botPong": "node dist/botPong.js",
     "dev": "npm run build && npm run start",
     "test": "npm run build && node dist/script/test.js"
@@ -35,6 +36,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.75.1",
+    "concurrently": "^9.2.1",
     "dotenv": "^17.2.3",
     "ethers": "^6.15.0",
     "viem": "^2.38.3"
