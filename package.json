@@ -4,6 +4,9 @@
   "description": "",
   "main": "dist/botPing.js",
   "type": "nodenext",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "build": "tsc && tsc-alias",
     "start": "node dist/botPing.js",

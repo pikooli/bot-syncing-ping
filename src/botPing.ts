@@ -44,9 +44,12 @@ const handleListenToPing = async (event: ContractEventPayload) => {
   logger.info('[main] storage', storage);
 };
 
-export const initializeStorage = async () => {
-  logger.info('[initializeStorage] starting initializeStorage');
-  const dbStorage = await supabaseDb.storage.findInDbStorage();
+export const initializeStorage = async (search: { block?: number }) => {
+  logger.info(
+    '[initializeStorage] starting initializeStorage starting at block: ',
+    search.block,
+  );
+  const dbStorage = await supabaseDb.storage.findInDbStorage(search);
   dbStorage.forEach((item) => {
     addToStorage(item.hash);
   });
@@ -123,7 +126,7 @@ export const initializeStorage = async () => {
 
 const main = async () => {
   logger.info('[main] starting main ');
-  await initializeStorage();
+  await initializeStorage({ block: storageBlock });
 
   logger.info('[main] storage', storage);
 

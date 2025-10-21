@@ -143,8 +143,16 @@ const updateDbStorageModeCompleted = async ({
   return data;
 };
 
-const findInDbStorage = async () => {
-  const { data, error } = await supabase.from('storage').select('*');
+const findInDbStorage = async ({ block }: { block?: number }) => {
+  let query = supabase
+    .from('storage')
+    .select('*')
+    .order('block', { ascending: true });
+  if (block) {
+    query = query.gte('block', block);
+  }
+  const { data, error } = await query;
+
   if (error) {
     logger.error('[findInDbStorage] Error finding in storage', error);
   }

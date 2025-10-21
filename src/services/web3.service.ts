@@ -127,20 +127,8 @@ export const resumePong = async ({
     'attempt: ',
     attempt,
   );
-  const { tx } = await verifyTransaction(last_tx_hash);
-  if (!tx.blockNumber) {
-    const newFees = bumpFees({
-      maxFeePerGas: tx.maxFeePerGas as bigint,
-      maxPriorityFeePerGas: tx.maxPriorityFeePerGas as bigint,
-    });
-    tx.maxFeePerGas = newFees.maxFeePerGas;
-    tx.maxPriorityFeePerGas = newFees.maxPriorityFeePerGas;
-    const resuls = await sendPong(txHash, tx);
-    if (!resuls.done) {
-      throw new Error('[resumePong] Transaction failed');
-    }
-    return { ...resuls, attempt: resuls.attempt + attempt };
-  } else {
+  const { tx, receipt } = await verifyTransaction(last_tx_hash);
+  if (receipt && receipt.status === 'success' && tx.blockNumber) {
     return {
       nonce: tx.nonce,
       lastTx: tx,
@@ -148,6 +136,17 @@ export const resumePong = async ({
       done: true,
     };
   }
+  const newFees = bumpFees({
+    maxFeePerGas: tx.maxFeePerGas as bigint,
+    maxPriorityFeePerGas: tx.maxPriorityFeePerGas as bigint,
+  });
+  tx.maxFeePerGas = newFees.maxFeePerGas;
+  tx.maxPriorityFeePerGas = newFees.maxPriorityFeePerGas;
+  const resuls = await sendPong(txHash, tx);
+  if (!resuls.done) {
+    throw new Error('[resumePong] Transaction failed');
+  }
+  return { ...resuls, attempt: resuls.attempt + attempt };
 };
 
 export const sendPing = async () => {
@@ -199,7 +198,7 @@ export const parseHistory = async (
   const history: (Log | EventLog)[] = [];
   try {
     const latestBlockNumber = await getLatestBlockNumber();
-    if (startBlock >= latestBlockNumber) {
+    if (startBlock > latestBlockNumber) {
       return { history: [] };
     }
 
@@ -300,7 +299,11 @@ export const verifyTransaction = async (txHash: `0x${string}`) => {
   if (!tx) {
     throw new Error('[verifyTransaction] Transaction not found');
   }
-  return { tx };
+  if (tx.blockNumber) {
+    const receipt = await client.getTransactionReceipt({ hash: txHash });
+    return { tx, receipt };
+  }
+  return { tx, receipt: null };
 };
 
 export const haveEnoughtBalance = async ({
