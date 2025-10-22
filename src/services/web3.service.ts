@@ -4,7 +4,7 @@ import { client, getLatestBlockNumber } from '@/lib/viem';
 import { parseEventLogs } from 'viem';
 import { logger } from '@/lib/logger';
 import { contract, nonceManager, provider, wallet } from '@/lib/ether';
-import { bumpFees, sleep, toJsonSafe } from '@/utils';
+import { bumpFees, sleep } from '@/utils';
 import { supabaseDb } from '@/lib/supabase';
 
 const HISTORY_STEP = 5;

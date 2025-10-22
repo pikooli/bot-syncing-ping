@@ -1,4 +1,4 @@
-import { parsePingHistory, sendPong } from '@/services/web3.service';
+import { parsePingHistory } from '@/services/web3.service';
 import { addToStorage, findInStorage, temporaryStorage } from '@/lib/storage';
 import { supabaseDb } from '@/lib/supabase';
 import { logger } from '@/lib/logger';

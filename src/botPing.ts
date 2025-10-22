@@ -41,7 +41,6 @@ const handleListenToPing = async (event: ContractEventPayload) => {
     BLOCK_NUMBER_USAGE.PING,
   );
   currentBlock = event.log.blockNumber;
-  logger.info('[main] storage', storage);
 };
 
 export const initializeStorage = async (search: { block?: number }) => {
@@ -53,7 +52,7 @@ export const initializeStorage = async (search: { block?: number }) => {
   dbStorage.forEach((item) => {
     addToStorage(item.hash);
   });
-  logger.info('[initializeStorage] storage', storage);
+  logger.info('[initializeStorage] storage length', storage.size);
 
   const latestBlockNumber = await getLatestBlockNumber();
   if (storageBlock >= latestBlockNumber) {
@@ -128,8 +127,6 @@ const main = async () => {
   logger.info('[main] starting main ');
   await initializeStorage({ block: storageBlock });
 
-  logger.info('[main] storage', storage);
-
   logger.info('[main] starting iterateOverPing');
 
   const latestBlockNumber = await getLatestBlockNumber();
@@ -154,7 +151,7 @@ const main = async () => {
     }
   }
 
-  logger.info('[main] storage', storage);
+  logger.info('[main] storage length', storage.size);
 
   await listenToPing(handleListenToPing);
 
@@ -177,7 +174,7 @@ const main = async () => {
       BLOCK_NUMBER_USAGE.PING,
     );
     currentBlock = latestBlockNumber;
-    logger.info('[intervalPing] storage', storage);
+    logger.info('[intervalPing] storage length', storage.size);
     retryCount = 0;
   }, INTERVAL_POOL);
 };

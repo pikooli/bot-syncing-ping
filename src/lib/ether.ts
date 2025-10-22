@@ -1,6 +1,5 @@
 import { ethers, NonceManager } from 'ethers';
-import { contractBytecode, contractAbi } from '@/constants/contract';
-import { logger } from '@/lib/logger';
+import { contractAbi } from '@/constants/contract';
 
 export const provider = new ethers.JsonRpcProvider(
   process.env['RCP_HTTP'] ?? '',

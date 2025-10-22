@@ -1,14 +1,16 @@
+// @ts-nocheck
 import 'dotenv/config';
 import { ethers } from 'ethers';
-import {
-  provider,
-  contract,
-  wallet,
-  nonceManager,
-  assertContractOnChain,
-} from '@/lib/ether';
+import { provider, contract, wallet, nonceManager } from '@/lib/ether';
 import { iterateOverPing } from '@/services/server.service';
-import { currentFees, sendPong } from '@/services/web3.service';
+import {
+  currentFees,
+  sendPong,
+  verifyTransaction,
+  resumePong,
+  haveEnoughtBalance,
+  parseHistory,
+} from '@/services/web3.service';
 import { supabaseDb } from '@/lib/supabase';
 const test = async () => {
   // const feeData = await provider.getFeeData();
@@ -44,16 +46,33 @@ const test = async () => {
   //   provider.getTransactionCount(addr, 'pending'),
   // ]);
   // console.log({ nLatest, nPending });
-  await supabaseDb.storage.insertIntoDbStorageModeQueue([
-    {
-      hash: '0x960990a1a5e9b077e678d1af6040d56160eaa1d87580558b1596a5e672dc5f04',
-      block: 1,
-    },
-  ]);
-  const data = await supabaseDb.storage.updateDbStorageModeCompleted(
-    '0x960990a1a5e9b077e678d1af6040d56160eaa1d87580558b1596a5e672dc5f04',
-  );
-  console.log(data);
+  // await supabaseDb.storage.insertIntoDbStorageModeQueue([
+  //   {
+  //     hash: '0x960990a1a5e9b077e678d1af6040d56160eaa1d87580558b1596a5e672dc5f04',
+  //     block: 1,
+  //   },
+  // ]);
+  // const data = await supabaseDb.storage.updateDbStorageModeCompleted(
+  //   '0x960990a1a5e9b077e678d1af6040d56160eaa1d87580558b1596a5e672dc5f04',
+  // );
+  // console.log(data);
+  // const result = await verifyTransaction(
+  //   '0x8dc33130d366512fc05b6d4fb6fa705770481c9c424b9dc052a84e1592316ede',
+  // );
+  // console.log(result);
+  // await resumePong({
+  //   txHash:
+  //     '0x960990a1a5e9b077e678d1af6040d56160eaa1d87580558b1596a5e672dc5f04',
+  //   last_tx_hash:
+  //     '0xc1ba65cce01577e70969048a6817e2b79378b07663d2dbfa5e812fae3c1efda1',
+  //   attempt: 1,
+  // });
+  // const result = await haveEnoughtBalance(
+  //   ethers.parseUnits('100000.000000000000000000', 'ether'),
+  // );
+  // console.log(result);
+  const h = await parseHistory('Ping', 0, 2);
+  console.log(h);
 };
 
 test();
